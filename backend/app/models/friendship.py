@@ -10,6 +10,7 @@ class FriendshipStatus(str, enum.Enum):
     PENDING = "pending"
     ACCEPTED = "accepted"
     REJECTED = "rejected"
+    BLOCKED = "blocked"
 
 class Friendship(Base):
     __tablename__ = "friendships"

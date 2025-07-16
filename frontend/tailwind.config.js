@@ -7,6 +7,14 @@ export default {
   darkMode: 'class',
   theme: {
     extend: {
+      // Mobile-first responsive breakpoints
+      screens: {
+        'sm': '640px',   // Small devices (landscape phones)
+        'md': '768px',   // Tablets
+        'lg': '1024px',  // Laptops/desktops
+        'xl': '1280px',  // Large desktops
+        '2xl': '1536px', // Extra large desktops
+      },
       colors: {
         // Custom color palette for AIGM
         primary: {
@@ -34,9 +42,25 @@ export default {
           900: '#111827',
         },
       },
+      // Mobile-first sizing for touch targets
+      spacing: {
+        '11': '44px',  // Minimum touch target size
+        '18': '72px',  // Large touch target
+        'safe': 'env(safe-area-inset-bottom)',
+      },
+      minHeight: {
+        'touch': '44px',  // Minimum touch target height
+        'screen-safe': 'calc(100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom))',
+      },
+      fontSize: {
+        // Prevent zoom on iOS
+        'base-mobile': ['16px', '24px'],
+        'sm-mobile': ['16px', '20px'],
+      },
       animation: {
         'fade-in': 'fadeIn 0.2s ease-in-out',
         'slide-up': 'slideUp 0.3s ease-out',
+        'slide-in-left': 'slideInLeft 0.3s ease-out',
         'pulse-slow': 'pulse 3s infinite',
       },
       keyframes: {
@@ -47,6 +71,10 @@ export default {
         slideUp: {
           '0%': { transform: 'translateY(10px)', opacity: '0' },
           '100%': { transform: 'translateY(0)', opacity: '1' },
+        },
+        slideInLeft: {
+          '0%': { transform: 'translateX(-100%)', opacity: '0' },
+          '100%': { transform: 'translateX(0)', opacity: '1' },
         },
       },
     },

@@ -3,27 +3,143 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    /* Light theme colors */
+    --color-primary: #2563eb;
+    --color-primary-hover: #1d4ed8;
+    --color-secondary: #6b7280;
+    --color-background: #ffffff;
+    --color-foreground: #111827;
+    --color-card: #f9fafb;
+    --color-border: #e5e7eb;
+    --color-input: #ffffff;
+    --color-muted: #f3f4f6;
+    --color-success: #10b981;
+    --color-error: #ef4444;
+    --color-warning: #f59e0b;
+  }
+
+  :root.dark {
+    /* Dark theme colors */
+    --color-primary: #3b82f6;
+    --color-primary-hover: #2563eb;
+    --color-secondary: #9ca3af;
+    --color-background: #111827;
+    --color-foreground: #f9fafb;
+    --color-card: #1f2937;
+    --color-border: #374151;
+    --color-input: #1f2937;
+    --color-muted: #374151;
+    --color-success: #10b981;
+    --color-error: #ef4444;
+    --color-warning: #f59e0b;
+  }
+
   html {
     font-family: 'Inter', system-ui, sans-serif;
+    /* Prevent zoom on iOS when focusing inputs */
+    font-size: 16px;
+    /* Enable smooth scrolling */
+    scroll-behavior: smooth;
+    /* Handle safe areas for mobile */
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   }
   
   body {
     @apply antialiased;
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    /* Prevent overscroll bounce on iOS */
+    overscroll-behavior: none;
+    /* Improve text rendering on mobile */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Improve touch targets on mobile */
+  button, [role="button"], input, select, textarea {
+    touch-action: manipulation;
+  }
+
+  /* Prevent zoom on inputs in iOS */
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="search"],
+  textarea {
+    font-size: 16px;
   }
 }
 
 @layer components {
-  /* Custom component styles */
+  /* Mobile-first button styles */
   .btn-primary {
-    @apply bg-primary-600 text-white px-4 py-2 rounded-lg hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 transition-colors;
+    @apply bg-primary-600 text-white px-4 py-3 min-h-touch rounded-lg 
+           focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 
+           transition-colors text-base-mobile font-medium
+           active:bg-primary-800 md:hover:bg-primary-700 md:py-2;
   }
   
   .btn-secondary {
-    @apply bg-gray-200 text-gray-900 px-4 py-2 rounded-lg hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-colors dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600;
+    @apply bg-gray-200 text-gray-900 px-4 py-3 min-h-touch rounded-lg 
+           focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 
+           transition-colors text-base-mobile font-medium
+           active:bg-gray-300 md:hover:bg-gray-300 md:py-2
+           dark:bg-gray-700 dark:text-gray-100 dark:active:bg-gray-600 dark:md:hover:bg-gray-600;
+  }
+
+  .btn-icon {
+    @apply p-3 min-h-touch min-w-[44px] rounded-lg transition-colors
+           focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2
+           active:bg-gray-200 md:hover:bg-gray-100 md:p-2
+           dark:active:bg-gray-700 dark:md:hover:bg-gray-800;
   }
   
   .input-primary {
-    @apply w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100;
+    @apply w-full px-4 py-3 min-h-touch border border-gray-300 rounded-lg 
+           text-base-mobile
+           focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent 
+           dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100
+           placeholder:text-gray-500 dark:placeholder:text-gray-400;
+  }
+
+  .drawer-overlay {
+    @apply fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden;
+  }
+
+  .drawer {
+    @apply fixed top-0 left-0 h-full w-3/4 max-w-sm bg-white dark:bg-gray-900 
+           z-50 transform transition-transform duration-300 ease-in-out
+           shadow-xl;
+  }
+
+  .drawer.open {
+    @apply translate-x-0;
+  }
+
+  .drawer.closed {
+    @apply -translate-x-full;
+  }
+
+  /* Touch-friendly scrollbars */
+  .scrollbar-touch {
+    scrollbar-width: auto;
+    scrollbar-color: rgb(156 163 175) transparent;
+  }
+  
+  .scrollbar-touch::-webkit-scrollbar {
+    width: 12px;
+  }
+  
+  .scrollbar-touch::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  .scrollbar-touch::-webkit-scrollbar-thumb {
+    background-color: rgb(156 163 175);
+    border-radius: 6px;
+    border: 2px solid transparent;
+    background-clip: content-box;
   }
 }
 

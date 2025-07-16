@@ -4,6 +4,8 @@ from fastapi import HTTPException, status, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jwt import PyJWKClient
 from app.core.config import settings
+import httpx
+import json
 
 # Auth0 configuration
 AUTH0_DOMAIN = settings.AUTH0_DOMAIN

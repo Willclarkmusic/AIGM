@@ -162,6 +162,120 @@ class RealtimeService:
         except Exception as e:
             logger.error(f"Failed to generate token request: {e}")
             return None
+    
+    # Friend-related notifications
+    async def send_friend_request_notification(
+        self, 
+        target_user_id: str, 
+        requester_data: Dict[str, Any]
+    ) -> bool:
+        """Send friend request notification to target user"""
+        return await self.publish_to_user(
+            user_id=target_user_id,
+            event_type="friend.request",
+            data={
+                "requester": requester_data,
+                "message": f"{requester_data['username']} sent you a friend request"
+            }
+        )
+    
+    async def send_friend_accepted_notification(
+        self, 
+        target_user_id: str, 
+        accepter_data: Dict[str, Any]
+    ) -> bool:
+        """Send friend request accepted notification"""
+        return await self.publish_to_user(
+            user_id=target_user_id,
+            event_type="friend.accepted",
+            data={
+                "accepter": accepter_data,
+                "message": f"{accepter_data['username']} accepted your friend request"
+            }
+        )
+    
+    async def send_friend_removed_notification(
+        self, 
+        target_user_id: str, 
+        remover_data: Dict[str, Any]
+    ) -> bool:
+        """Send friend removed notification"""
+        return await self.publish_to_user(
+            user_id=target_user_id,
+            event_type="friend.removed",
+            data={
+                "remover": remover_data,
+                "message": f"{remover_data['username']} removed you as a friend"
+            }
+        )
+    
+    async def send_friend_online_notification(
+        self, 
+        friend_user_ids: list, 
+        user_data: Dict[str, Any]
+    ) -> bool:
+        """Send friend online status notification to all friends"""
+        success = True
+        for friend_id in friend_user_ids:
+            result = await self.publish_to_user(
+                user_id=friend_id,
+                event_type="friend.online",
+                data={
+                    "user": user_data,
+                    "status": "online"
+                }
+            )
+            if not result:
+                success = False
+        return success
+    
+    async def send_friend_offline_notification(
+        self, 
+        friend_user_ids: list, 
+        user_data: Dict[str, Any]
+    ) -> bool:
+        """Send friend offline status notification to all friends"""
+        success = True
+        for friend_id in friend_user_ids:
+            result = await self.publish_to_user(
+                user_id=friend_id,
+                event_type="friend.offline",
+                data={
+                    "user": user_data,
+                    "status": "offline"
+                }
+            )
+            if not result:
+                success = False
+        return success
+    
+    # Server-related notifications
+    async def send_server_notification(
+        self, 
+        target_user_id: str, 
+        event_type: str, 
+        server_data: Dict[str, Any]
+    ) -> bool:
+        """Send server-related notification to target user"""
+        return await self.publish_to_user(
+            user_id=target_user_id,
+            event_type=f"server.{event_type}",
+            data=server_data
+        )
+    
+    # Room-related notifications  
+    async def send_room_notification(
+        self, 
+        target_user_id: str, 
+        event_type: str, 
+        room_data: Dict[str, Any]
+    ) -> bool:
+        """Send room-related notification to target user"""
+        return await self.publish_to_user(
+            user_id=target_user_id,
+            event_type=f"room.{event_type}",
+            data=room_data
+        )
 
 # Global instance
 realtime_service = RealtimeService()

@@ -1,34 +1,44 @@
-import { Routes, Route } from 'react-router-dom'
-import { useEffect } from 'react'
-import { useThemeStore } from './stores/themeStore'
+import { Routes, Route, Navigate } from 'react-router-dom'
 import HomePage from './pages/HomePage'
 import AuthPage from './pages/AuthPage'
 import ServerPage from './pages/ServerPage'
+import FriendsPage from './components/friends/FriendsPage'
 import SettingsPage from './pages/SettingsPage'
+import TestPage from './pages/TestPage'
+import AppLayout from './components/layout/AppLayout'
 
 function App() {
-  const { theme, initializeTheme } = useThemeStore()
-
-  useEffect(() => {
-    initializeTheme()
-  }, [initializeTheme])
-
-  useEffect(() => {
-    if (theme === 'dark') {
-      document.documentElement.classList.add('dark')
-    } else {
-      document.documentElement.classList.remove('dark')
-    }
-  }, [theme])
+  // Theme initialization is now handled in main.tsx via initializeUIStore()
+  // Theme application to document is handled in uiStore.ts setTheme function
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="min-h-screen-safe bg-white dark:bg-gray-900">
       <Routes>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/auth" element={<AuthPage />} />
+        {/* Root route redirects to test page for demo */}
+        <Route path="/" element={<Navigate to="/test" replace />} />
+        
+        {/* Auth routes */}
+        <Route path="/login" element={<AuthPage />} />
+        
+        {/* Test page for component demo */}
+        <Route path="/test" element={<TestPage />} />
+        
+        {/* Main app routes with layout */}
+        <Route path="/friends" element={
+          <AppLayout>
+            <FriendsPage />
+          </AppLayout>
+        } />
+        
+        {/* Server routes */}
         <Route path="/servers/:serverId" element={<ServerPage />} />
         <Route path="/servers/:serverId/rooms/:roomId" element={<ServerPage />} />
+        
+        {/* Settings */}
         <Route path="/settings" element={<SettingsPage />} />
+        
+        {/* Catch all redirect */}
+        <Route path="*" element={<Navigate to="/test" replace />} />
       </Routes>
     </div>
   )

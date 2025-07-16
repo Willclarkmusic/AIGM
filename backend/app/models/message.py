@@ -10,6 +10,7 @@ class Message(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     room_id = Column(UUID(as_uuid=True), ForeignKey("rooms.id", ondelete="CASCADE"))
+    conversation_id = Column(UUID(as_uuid=True), ForeignKey("direct_conversations.id", ondelete="CASCADE"))
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     content = Column(Text)
     parent_message_id = Column(UUID(as_uuid=True), ForeignKey("messages.id"))
@@ -18,6 +19,7 @@ class Message(Base):
 
     # Relationships
     room = relationship("Room", back_populates="messages")
+    conversation = relationship("DirectConversation")
     user = relationship("User", back_populates="messages")
     parent_message = relationship("Message", remote_side=[id])
     files = relationship("File", back_populates="message", cascade="all, delete-orphan")
