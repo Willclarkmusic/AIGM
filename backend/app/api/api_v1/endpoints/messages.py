@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, desc, asc
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, field_validator, ValidationInfo
 from typing import List, Optional, Union
 from app.db.database import get_db
-from app.auth.dependencies import get_current_user
+from app.core.mock_auth import get_current_user
 from app.models.user import User
 from app.models.message import Message, MessageReaction, File
 from app.models.room import Room, UserRoom
@@ -28,26 +28,27 @@ class CreateMessageRequest(BaseModel):
     parent_message_id: Optional[str] = None
     files: Optional[List[dict]] = None
     
-    @validator('content')
-    def validate_content(cls, v, values):
+    @field_validator('content')
+    @classmethod
+    def validate_content(cls, v, info: ValidationInfo):
         # Content is required unless there are files
-        if not v and not values.get('files'):
+        if not v and not info.data.get('files'):
             raise ValueError('Message must have content or files')
         if v and len(v.strip()) > 4000:
             raise ValueError('Message content must be 4000 characters or less')
         return v.strip() if v else None
     
-    @validator('room_id', 'conversation_id')
-    def validate_target(cls, v, values, field):
-        room_id = values.get('room_id')
-        conversation_id = values.get('conversation_id')
+    @field_validator('conversation_id')
+    @classmethod
+    def validate_target(cls, v, info: ValidationInfo):
+        room_id = info.data.get('room_id')
+        conversation_id = v
         
         # Exactly one of room_id or conversation_id must be provided
-        if field.name == 'conversation_id':
-            if not room_id and not v:
-                raise ValueError('Either room_id or conversation_id must be provided')
-            if room_id and v:
-                raise ValueError('Cannot specify both room_id and conversation_id')
+        if not room_id and not conversation_id:
+            raise ValueError('Either room_id or conversation_id must be provided')
+        if room_id and conversation_id:
+            raise ValueError('Cannot specify both room_id and conversation_id')
         
         return v
 
@@ -55,7 +56,8 @@ class UpdateMessageRequest(BaseModel):
     """Request body for updating a message"""
     content: str
     
-    @validator('content')
+    @field_validator('content')
+    @classmethod
     def validate_content(cls, v):
         if not v or not v.strip():
             raise ValueError('Message content is required')
@@ -67,7 +69,8 @@ class AddReactionRequest(BaseModel):
     """Request body for adding a reaction"""
     emoji: str
     
-    @validator('emoji')
+    @field_validator('emoji')
+    @classmethod
     def validate_emoji(cls, v):
         if not v or not v.strip():
             raise ValueError('Emoji is required')
@@ -80,7 +83,8 @@ class RemoveReactionRequest(BaseModel):
     """Request body for removing a reaction"""
     emoji: str
     
-    @validator('emoji')
+    @field_validator('emoji')
+    @classmethod
     def validate_emoji(cls, v):
         if not v or not v.strip():
             raise ValueError('Emoji is required')
@@ -91,16 +95,16 @@ class TypingRequest(BaseModel):
     room_id: Optional[str] = None
     conversation_id: Optional[str] = None
     
-    @validator('room_id', 'conversation_id')
-    def validate_target(cls, v, values, field):
-        room_id = values.get('room_id')
-        conversation_id = values.get('conversation_id')
+    @field_validator('conversation_id')
+    @classmethod
+    def validate_target(cls, v, info: ValidationInfo):
+        room_id = info.data.get('room_id')
+        conversation_id = v
         
-        if field.name == 'conversation_id':
-            if not room_id and not v:
-                raise ValueError('Either room_id or conversation_id must be provided')
-            if room_id and v:
-                raise ValueError('Cannot specify both room_id and conversation_id')
+        if not room_id and not conversation_id:
+            raise ValueError('Either room_id or conversation_id must be provided')
+        if room_id and conversation_id:
+            raise ValueError('Cannot specify both room_id and conversation_id')
         
         return v
 
@@ -147,7 +151,8 @@ class ConversationRequest(BaseModel):
     """Request body for creating/getting DM conversation"""
     user_id: str
     
-    @validator('user_id')
+    @field_validator('user_id')
+    @classmethod
     def validate_user_id(cls, v):
         if not v or not v.strip():
             raise ValueError('User ID is required')
@@ -314,10 +319,16 @@ async def create_message(
         )
         
         # Send real-time notification
+        server_id = None
+        if request_data.room_id:
+            # Get server_id from room
+            server_id = str(room.server_id) if room else None
+        
         background_tasks.add_task(
             send_message_created_notification,
             message_response,
-            current_user
+            current_user,
+            server_id
         )
         
         return message_response
@@ -514,11 +525,18 @@ async def update_message(
         message_response = messages[0] if messages else None
         
         if message_response:
+            # Get server_id from room if it's a room message
+            server_id = None
+            if message.room_id:
+                room = db.query(Room).filter(Room.id == message.room_id).first()
+                server_id = str(room.server_id) if room else None
+            
             # Send real-time notification
             background_tasks.add_task(
                 send_message_updated_notification,
                 message_response,
-                current_user
+                current_user,
+                server_id
             )
         
         return message_response
@@ -560,6 +578,12 @@ async def delete_message(
         room_id = str(message.room_id) if message.room_id else None
         conversation_id = str(message.conversation_id) if message.conversation_id else None
         
+        # Get server_id if it's a room message
+        server_id = None
+        if message.room_id:
+            room = db.query(Room).filter(Room.id == message.room_id).first()
+            server_id = str(room.server_id) if room else None
+        
         # Delete message (cascade will handle files and reactions)
         db.delete(message)
         db.commit()
@@ -570,7 +594,8 @@ async def delete_message(
             message_id,
             room_id,
             conversation_id,
-            current_user
+            current_user,
+            server_id
         )
         
         return MessageStatusResponse(
@@ -625,13 +650,20 @@ async def add_reaction(
         db.add(reaction)
         db.commit()
         
+        # Get server_id if it's a room message
+        server_id = None
+        if message.room_id:
+            room = db.query(Room).filter(Room.id == message.room_id).first()
+            server_id = str(room.server_id) if room else None
+        
         # Send real-time notification
         background_tasks.add_task(
             send_reaction_added_notification,
             message_id,
             request_data.emoji,
             current_user,
-            message
+            message,
+            server_id
         )
         
         return MessageStatusResponse(
@@ -680,13 +712,20 @@ async def remove_reaction(
         db.delete(reaction)
         db.commit()
         
+        # Get server_id if it's a room message
+        server_id = None
+        if message.room_id:
+            room = db.query(Room).filter(Room.id == message.room_id).first()
+            server_id = str(room.server_id) if room else None
+        
         # Send real-time notification
         background_tasks.add_task(
             send_reaction_removed_notification,
             message_id,
             request_data.emoji,
             current_user,
-            message
+            message,
+            server_id
         )
         
         return MessageStatusResponse(
@@ -718,13 +757,20 @@ async def start_typing(
         elif request_data.conversation_id:
             await validate_conversation_access(request_data.conversation_id, current_user, db)
         
+        # Get server_id if it's a room
+        server_id = None
+        if request_data.room_id:
+            room = db.query(Room).filter(Room.id == request_data.room_id).first()
+            server_id = str(room.server_id) if room else None
+        
         # Send typing start notification
         background_tasks.add_task(
             send_typing_notification,
             "start",
             current_user,
             request_data.room_id,
-            request_data.conversation_id
+            request_data.conversation_id,
+            server_id
         )
         
         return {"message": "Typing indicator started"}
@@ -753,13 +799,20 @@ async def stop_typing(
         elif request_data.conversation_id:
             await validate_conversation_access(request_data.conversation_id, current_user, db)
         
+        # Get server_id if it's a room
+        server_id = None
+        if request_data.room_id:
+            room = db.query(Room).filter(Room.id == request_data.room_id).first()
+            server_id = str(room.server_id) if room else None
+        
         # Send typing stop notification
         background_tasks.add_task(
             send_typing_notification,
             "stop",
             current_user,
             request_data.room_id,
-            request_data.conversation_id
+            request_data.conversation_id,
+            server_id
         )
         
         return {"message": "Typing indicator stopped"}
@@ -1063,167 +1116,105 @@ async def validate_conversation_access(conversation_id: str, user: User, db: Ses
         )
 
 # Real-time notification functions
-async def send_message_created_notification(message: MessageResponse, user: User):
+async def send_message_created_notification(message: MessageResponse, user: User, server_id: str = None):
     """Send real-time notification for new message"""
     try:
         realtime_service = RealtimeService()
         
-        # Determine channel
-        if message.room_id:
-            # Room message - publish to room channel
-            await realtime_service.publish_to_room(
-                server_id="unknown",  # Would need server context
-                room_id=message.room_id,
-                event_type="message.created",
-                data=message.dict(),
-                user_id=str(user.id)
-            )
-        elif message.conversation_id:
-            # DM message - publish to conversation channel
-            await realtime_service.publish_to_dm(
-                conversation_id=message.conversation_id,
-                event_type="message.created",
-                data=message.dict(),
-                user_id=str(user.id)
-            )
+        await realtime_service.publish_message_created(
+            message_data=message.dict(),
+            server_id=server_id,
+            room_id=message.room_id,
+            conversation_id=message.conversation_id,
+            user_id=str(user.id)
+        )
     except Exception as e:
         logger.error(f"Failed to send message created notification: {e}")
 
-async def send_message_updated_notification(message: MessageResponse, user: User):
+async def send_message_updated_notification(message: MessageResponse, user: User, server_id: str = None):
     """Send real-time notification for updated message"""
     try:
         realtime_service = RealtimeService()
         
-        if message.room_id:
-            await realtime_service.publish_to_room(
-                server_id="unknown",
-                room_id=message.room_id,
-                event_type="message.updated",
-                data=message.dict(),
-                user_id=str(user.id)
-            )
-        elif message.conversation_id:
-            await realtime_service.publish_to_dm(
-                conversation_id=message.conversation_id,
-                event_type="message.updated",
-                data=message.dict(),
-                user_id=str(user.id)
-            )
+        await realtime_service.publish_message_updated(
+            message_data=message.dict(),
+            server_id=server_id,
+            room_id=message.room_id,
+            conversation_id=message.conversation_id,
+            user_id=str(user.id)
+        )
     except Exception as e:
         logger.error(f"Failed to send message updated notification: {e}")
 
-async def send_message_deleted_notification(message_id: str, room_id: str, conversation_id: str, user: User):
+async def send_message_deleted_notification(message_id: str, room_id: str, conversation_id: str, user: User, server_id: str = None):
     """Send real-time notification for deleted message"""
     try:
         realtime_service = RealtimeService()
         
-        data = {"message_id": message_id, "deleted_by": str(user.id)}
-        
-        if room_id:
-            await realtime_service.publish_to_room(
-                server_id="unknown",
-                room_id=room_id,
-                event_type="message.deleted",
-                data=data,
-                user_id=str(user.id)
-            )
-        elif conversation_id:
-            await realtime_service.publish_to_dm(
-                conversation_id=conversation_id,
-                event_type="message.deleted",
-                data=data,
-                user_id=str(user.id)
-            )
+        await realtime_service.publish_message_deleted(
+            message_id=message_id,
+            deleted_by=str(user.id),
+            server_id=server_id,
+            room_id=room_id,
+            conversation_id=conversation_id
+        )
     except Exception as e:
         logger.error(f"Failed to send message deleted notification: {e}")
 
-async def send_reaction_added_notification(message_id: str, emoji: str, user: User, message: Message):
+async def send_reaction_added_notification(message_id: str, emoji: str, user: User, message: Message, server_id: str = None):
     """Send real-time notification for added reaction"""
     try:
         realtime_service = RealtimeService()
         
-        data = {
-            "message_id": message_id,
-            "emoji": emoji,
-            "user_id": str(user.id),
-            "username": user.username
-        }
-        
-        if message.room_id:
-            await realtime_service.publish_to_room(
-                server_id="unknown",
-                room_id=str(message.room_id),
-                event_type="reaction.added",
-                data=data,
-                user_id=str(user.id)
-            )
-        elif message.conversation_id:
-            await realtime_service.publish_to_dm(
-                conversation_id=str(message.conversation_id),
-                event_type="reaction.added",
-                data=data,
-                user_id=str(user.id)
-            )
+        await realtime_service.publish_reaction_added(
+            message_id=message_id,
+            emoji=emoji,
+            user_id=str(user.id),
+            username=user.username,
+            server_id=server_id,
+            room_id=str(message.room_id) if message.room_id else None,
+            conversation_id=str(message.conversation_id) if message.conversation_id else None
+        )
     except Exception as e:
         logger.error(f"Failed to send reaction added notification: {e}")
 
-async def send_reaction_removed_notification(message_id: str, emoji: str, user: User, message: Message):
+async def send_reaction_removed_notification(message_id: str, emoji: str, user: User, message: Message, server_id: str = None):
     """Send real-time notification for removed reaction"""
     try:
         realtime_service = RealtimeService()
         
-        data = {
-            "message_id": message_id,
-            "emoji": emoji,
-            "user_id": str(user.id),
-            "username": user.username
-        }
-        
-        if message.room_id:
-            await realtime_service.publish_to_room(
-                server_id="unknown",
-                room_id=str(message.room_id),
-                event_type="reaction.removed",
-                data=data,
-                user_id=str(user.id)
-            )
-        elif message.conversation_id:
-            await realtime_service.publish_to_dm(
-                conversation_id=str(message.conversation_id),
-                event_type="reaction.removed",
-                data=data,
-                user_id=str(user.id)
-            )
+        await realtime_service.publish_reaction_removed(
+            message_id=message_id,
+            emoji=emoji,
+            user_id=str(user.id),
+            username=user.username,
+            server_id=server_id,
+            room_id=str(message.room_id) if message.room_id else None,
+            conversation_id=str(message.conversation_id) if message.conversation_id else None
+        )
     except Exception as e:
         logger.error(f"Failed to send reaction removed notification: {e}")
 
-async def send_typing_notification(action: str, user: User, room_id: str = None, conversation_id: str = None):
+async def send_typing_notification(action: str, user: User, room_id: str = None, conversation_id: str = None, server_id: str = None):
     """Send typing start/stop notification"""
     try:
         realtime_service = RealtimeService()
         
-        data = {
-            "user_id": str(user.id),
-            "username": user.username,
-            "action": action  # "start" or "stop"
-        }
-        
-        event_type = f"typing.{action}"
-        
-        if room_id:
-            await realtime_service.publish_to_room(
-                server_id="unknown",
+        if action == "start":
+            await realtime_service.publish_typing_start(
+                user_id=str(user.id),
+                username=user.username,
+                server_id=server_id,
                 room_id=room_id,
-                event_type=event_type,
-                data=data,
-                user_id=str(user.id)
+                conversation_id=conversation_id
             )
-        elif conversation_id:
-            await realtime_service.publish_to_dm(
-                conversation_id=conversation_id,
-                event_type=event_type,
-                data=data,
-                user_id=str(user.id)
+        elif action == "stop":
+            await realtime_service.publish_typing_stop(
+                user_id=str(user.id),
+                username=user.username,
+                server_id=server_id,
+                room_id=room_id,
+                conversation_id=conversation_id
             )
     except Exception as e:
         logger.error(f"Failed to send typing notification: {e}")

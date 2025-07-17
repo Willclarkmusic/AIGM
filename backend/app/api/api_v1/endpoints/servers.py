@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, func
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, field_validator
 from typing import List, Optional
 from app.db.database import get_db
-from app.auth.dependencies import get_current_user
+from app.core.mock_auth import get_current_user
 from app.models.user import User
 from app.models.server import Server, UserServer
 from app.models.room import Room
@@ -23,7 +23,8 @@ class CreateServerRequest(BaseModel):
     name: str
     is_private: bool = False
     
-    @validator('name')
+    @field_validator('name')
+    @classmethod
     def validate_name(cls, v):
         if not v or not v.strip():
             raise ValueError('Server name is required')
@@ -36,7 +37,8 @@ class UpdateServerRequest(BaseModel):
     name: Optional[str] = None
     is_private: Optional[bool] = None
     
-    @validator('name')
+    @field_validator('name')
+    @classmethod
     def validate_name(cls, v):
         if v is not None:
             if not v or not v.strip():
@@ -50,7 +52,8 @@ class JoinServerRequest(BaseModel):
     """Request body for joining a server by access code"""
     access_code: str
     
-    @validator('access_code')
+    @field_validator('access_code')
+    @classmethod
     def validate_access_code(cls, v):
         if not v or len(v.strip()) != 5:
             raise ValueError('Access code must be exactly 5 characters')
@@ -91,6 +94,17 @@ class ServerStatusResponse(BaseModel):
     message: str
     server_id: Optional[str] = None
     access_code: Optional[str] = None
+
+class UpdateMemberRoleRequest(BaseModel):
+    """Request body for updating member role"""
+    role: str
+    
+    @field_validator('role')
+    @classmethod
+    def validate_role(cls, v):
+        if v not in ['member', 'admin']:
+            raise ValueError('Role must be either "member" or "admin"')
+        return v
 
 def generate_access_code(db: Session) -> str:
     """Generate a unique 5-character access code"""
@@ -529,3 +543,153 @@ async def send_user_joined_server_notification(user: User, server: Server):
         )
     except Exception as e:
         logger.error(f"Failed to send user joined server notification: {e}")
+
+@router.patch("/{server_id}/members/{user_id}/role", response_model=ServerStatusResponse)
+async def update_member_role(
+    server_id: str,
+    user_id: str,
+    request_data: UpdateMemberRoleRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Update member role (owner/admin only)"""
+    try:
+        # Check if current user has permission (owner or admin)
+        current_user_server = db.query(UserServer).filter(
+            and_(
+                UserServer.user_id == current_user.id,
+                UserServer.server_id == server_id,
+                UserServer.role.in_(["owner", "admin"])
+            )
+        ).first()
+        
+        if not current_user_server:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You don't have permission to manage members in this server"
+            )
+        
+        # Get target user's membership
+        target_user_server = db.query(UserServer).filter(
+            and_(
+                UserServer.user_id == user_id,
+                UserServer.server_id == server_id
+            )
+        ).first()
+        
+        if not target_user_server:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User is not a member of this server"
+            )
+        
+        # Cannot change owner role
+        if target_user_server.role == "owner":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot change server owner's role"
+            )
+        
+        # Only owner can promote to admin
+        if request_data.role == "admin" and current_user_server.role != "owner":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only server owner can promote users to admin"
+            )
+        
+        # Update role
+        target_user_server.role = request_data.role
+        db.commit()
+        
+        return ServerStatusResponse(
+            message=f"Member role updated to {request_data.role}",
+            server_id=str(server_id)
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update member role: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update member role"
+        )
+
+@router.delete("/{server_id}/members/{user_id}", response_model=ServerStatusResponse)
+async def kick_member(
+    server_id: str,
+    user_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Remove member from server (owner/admin only)"""
+    try:
+        # Check if current user has permission (owner or admin)
+        current_user_server = db.query(UserServer).filter(
+            and_(
+                UserServer.user_id == current_user.id,
+                UserServer.server_id == server_id,
+                UserServer.role.in_(["owner", "admin"])
+            )
+        ).first()
+        
+        if not current_user_server:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You don't have permission to manage members in this server"
+            )
+        
+        # Get target user's membership
+        target_user_server = db.query(UserServer).filter(
+            and_(
+                UserServer.user_id == user_id,
+                UserServer.server_id == server_id
+            )
+        ).first()
+        
+        if not target_user_server:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User is not a member of this server"
+            )
+        
+        # Cannot kick owner
+        if target_user_server.role == "owner":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot kick server owner"
+            )
+        
+        # Admin can only kick members, not other admins (unless they are owner)
+        if (current_user_server.role == "admin" and 
+            target_user_server.role == "admin" and 
+            target_user_server.user_id != current_user.id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Admins cannot kick other admins"
+            )
+        
+        # Cannot kick yourself unless you're leaving
+        if user_id == current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Use the leave endpoint to remove yourself from the server"
+            )
+        
+        # Remove membership
+        db.delete(target_user_server)
+        db.commit()
+        
+        return ServerStatusResponse(
+            message="Member removed from server",
+            server_id=str(server_id)
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to kick member: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to remove member"
+        )

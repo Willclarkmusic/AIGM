@@ -1,10 +1,12 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import AppLayout from '../components/layout/AppLayout'
 import FriendsPage from '../components/friends/FriendsPage'
 import RoomList from '../components/navigation/RoomList'
 import MessageList from '../components/chat/MessageList'
 import { useToast } from '../components/ui/Toast'
 import { useResponsive } from '../stores/uiStore'
+import { FiEdit3, FiExternalLink } from 'react-icons/fi'
 
 function TestPage() {
   const { isMobile, isTablet, isDesktop } = useResponsive()
@@ -170,6 +172,14 @@ function TestPage() {
               >
                 Test Success
               </button>
+              <Link
+                to="/editor"
+                className="btn-secondary flex items-center space-x-2"
+              >
+                <FiEdit3 className="w-4 h-4" />
+                <span>TipTap Editor</span>
+                <FiExternalLink className="w-3 h-3" />
+              </Link>
             </div>
 
             {/* Mobile Test Info */}

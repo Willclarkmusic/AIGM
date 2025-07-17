@@ -3,18 +3,28 @@ import { useEditor, EditorContent } from '@tiptap/react'
 import { 
   FiBold, 
   FiItalic, 
+  FiUnderline,
   FiCode, 
   FiSmile, 
   FiPaperclip, 
   FiSend,
   FiX,
   FiImage,
-  FiFile
+  FiFile,
+  FiLink,
+  FiType,
+  FiDroplet,
+  FiList,
+  FiChevronDown,
+  FiMoreHorizontal
 } from 'react-icons/fi'
 import { useDropzone } from 'react-dropzone'
 import { useResponsive, useKeyboardVisible } from '../../stores/uiStore'
 import { createEditorConfig, validateMessage, MentionUser } from '../../lib/tiptap'
+import { useAblyChannel } from '../../hooks/useAblyChannel'
 import EmojiPicker from './EmojiPicker'
+import ColorPicker from './ColorPicker'
+import LinkDialog from './LinkDialog'
 
 interface FileAttachment {
   id: string
@@ -56,16 +66,27 @@ const MessageComposer = ({
   onMentionQuery,
   disabled = false,
   initialContent = '',
-  roomId,
+  roomId = 'general',
   enableVoiceMessage = false,
   className = ''
 }: MessageComposerProps) => {
+  // Real-time functionality
+  const { 
+    sendMessage, 
+    sendTypingIndicator, 
+    stopTyping,
+    error: realtimeError 
+  } = useAblyChannel(roomId)
   const { isMobile } = useResponsive()
   const keyboardVisible = useKeyboardVisible()
   
   // Editor state
   const [isToolbarVisible, setIsToolbarVisible] = useState(false)
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
+  const [showTextColorPicker, setShowTextColorPicker] = useState(false)
+  const [showHighlightPicker, setShowHighlightPicker] = useState(false)
+  const [showLinkDialog, setShowLinkDialog] = useState(false)
+  const [showMoreOptions, setShowMoreOptions] = useState(false)
   const [attachments, setAttachments] = useState<FileAttachment[]>([])
   const [isSending, setIsSending] = useState(false)
   const [editorHeight, setEditorHeight] = useState(44)
@@ -122,6 +143,24 @@ const MessageComposer = ({
         class: 'prose prose-sm sm:prose lg:prose-lg xl:prose-2xl mx-auto focus:outline-none min-h-[44px] p-3',
         'data-placeholder': placeholder,
       },
+      handleKeyDown: (view, event) => {
+        // Handle Enter key for sending messages
+        if (event.key === 'Enter' && !event.shiftKey) {
+          event.preventDefault()
+          console.log('🎹 Enter key pressed - sending message')
+          handleSendMessage()
+          return true
+        }
+        // Shift+Enter creates a new line (default behavior)
+        return false
+      },
+    },
+    onUpdate: ({ editor }) => {
+      // Send typing indicator when user is typing
+      const content = editor.getText()
+      if (content.trim().length > 0 && sendTypingIndicator) {
+        sendTypingIndicator()
+      }
     },
     onFocus: () => {
       if (isMobile) {
@@ -129,6 +168,11 @@ const MessageComposer = ({
       }
     },
     onBlur: () => {
+      // Stop typing when editor loses focus
+      if (stopTyping) {
+        stopTyping()
+      }
+      
       // Keep toolbar visible if emoji picker is open
       if (!showEmojiPicker) {
         setIsToolbarVisible(false)
@@ -138,9 +182,20 @@ const MessageComposer = ({
 
   // Handle send message
   async function handleSendMessage(content?: string) {
-    if (!editor || isSending) return
+    console.log('🎬 handleSendMessage called', { 
+      hasEditor: !!editor, 
+      isSending, 
+      content: content?.substring(0, 50) 
+    })
+    
+    if (!editor || isSending) {
+      console.log('🎬 handleSendMessage early return: no editor or already sending')
+      return
+    }
 
     const html = content || editor.getHTML()
+    console.log('🎬 Message HTML:', html)
+    
     const validation = validateMessage(html, maxCharacters)
 
     if (!validation.isValid) {
@@ -149,8 +204,38 @@ const MessageComposer = ({
     }
 
     setIsSending(true)
+    
+    // Stop typing indicator
+    stopTyping()
+    
     try {
-      await onSend(html, attachments)
+      console.log('🚀 MessageComposer: Attempting to send message', { 
+        html, 
+        sendMessageAvailable: !!sendMessage,
+        attachments: attachments.length 
+      })
+      
+      // Use real-time sendMessage if available, otherwise fallback to onSend
+      if (sendMessage) {
+        console.log('🚀 Using real-time sendMessage')
+        // Convert attachments to the format expected by real-time
+        const realtimeAttachments = attachments.map(att => ({
+          id: att.id,
+          name: att.file.name,
+          size: att.file.size,
+          type: att.file.type,
+          url: att.preview || '' // TODO: Upload to server and get URL
+        }))
+        
+        await sendMessage(html, realtimeAttachments)
+        console.log('🚀 Real-time message sent successfully')
+      } else {
+        console.log('🚀 Using fallback onSend')
+        // Fallback to traditional onSend
+        await onSend(html, attachments)
+        console.log('🚀 Fallback message sent successfully')
+      }
+      
       editor.commands.clearContent()
       setAttachments([])
       setShowEmojiPicker(false)
@@ -218,6 +303,73 @@ const MessageComposer = ({
     editor?.commands.insertContent(emoji)
     setShowEmojiPicker(false)
     editor?.commands.focus()
+  }
+
+  // Handle text color
+  const handleTextColor = (color: string) => {
+    if (color) {
+      editor?.chain().focus().setColor(color).run()
+    } else {
+      editor?.chain().focus().unsetColor().run()
+    }
+    setShowTextColorPicker(false)
+  }
+
+  // Handle highlight color
+  const handleHighlightColor = (color: string) => {
+    if (color) {
+      editor?.chain().focus().setHighlight({ color }).run()
+    } else {
+      editor?.chain().focus().unsetHighlight().run()
+    }
+    setShowHighlightPicker(false)
+  }
+
+  // Handle link operations
+  const handleLinkAdd = (url: string, text?: string) => {
+    if (text) {
+      editor?.chain().focus().insertContent(`<a href="${url}">${text}</a>`).run()
+    } else {
+      editor?.chain().focus().setLink({ href: url }).run()
+    }
+    setShowLinkDialog(false)
+  }
+
+  const handleLinkRemove = () => {
+    editor?.chain().focus().unsetLink().run()
+    setShowLinkDialog(false)
+  }
+
+  // Handle heading level changes
+  const handleHeadingChange = (level: number) => {
+    if (level === 0) {
+      editor?.chain().focus().setParagraph().run()
+    } else {
+      editor?.chain().focus().toggleHeading({ level: level as 1 | 2 }).run()
+    }
+    setShowMoreOptions(false)
+  }
+
+  // Close all popups
+  const closeAllPopups = () => {
+    setShowEmojiPicker(false)
+    setShowTextColorPicker(false)
+    setShowHighlightPicker(false)
+    setShowLinkDialog(false)
+    setShowMoreOptions(false)
+  }
+
+  // Get current text formatting state
+  const getCurrentTextColor = () => {
+    return editor?.getAttributes('textStyle')?.color || ''
+  }
+
+  const getCurrentHighlightColor = () => {
+    return editor?.getAttributes('highlight')?.color || ''
+  }
+
+  const getCurrentLinkUrl = () => {
+    return editor?.getAttributes('link')?.href || ''
   }
 
   // Keyboard event handling for mobile
@@ -321,7 +473,10 @@ const MessageComposer = ({
           {/* Send Button */}
           <div className="absolute bottom-2 right-2">
             <button
-              onClick={() => handleSendMessage()}
+              onClick={() => {
+                console.log('🎯 Send button clicked!', { canSend, isSending, characterCount })
+                handleSendMessage()
+              }}
               disabled={!canSend}
               className={`
                 p-2 rounded-full transition-all duration-200 min-h-touch min-w-touch
@@ -337,89 +492,236 @@ const MessageComposer = ({
         </div>
       </div>
 
-      {/* Mobile Toolbar */}
+      {/* Enhanced Toolbar */}
       {(isToolbarVisible || !isMobile) && (
-        <div className="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700">
-          {/* Formatting Controls */}
-          <div className="flex items-center space-x-1">
-            <button
-              onClick={() => editor?.chain().focus().toggleBold().run()}
-              className={`btn-icon ${editor?.isActive('bold') ? 'bg-primary-100 dark:bg-primary-900 text-primary-600 dark:text-primary-400' : ''}`}
-              title="Bold"
-            >
-              <FiBold className="w-4 h-4" />
-            </button>
-            
-            <button
-              onClick={() => editor?.chain().focus().toggleItalic().run()}
-              className={`btn-icon ${editor?.isActive('italic') ? 'bg-primary-100 dark:bg-primary-900 text-primary-600 dark:text-primary-400' : ''}`}
-              title="Italic"
-            >
-              <FiItalic className="w-4 h-4" />
-            </button>
-            
-            <button
-              onClick={() => editor?.chain().focus().toggleCode().run()}
-              className={`btn-icon ${editor?.isActive('code') ? 'bg-primary-100 dark:bg-primary-900 text-primary-600 dark:text-primary-400' : ''}`}
-              title="Code"
-            >
-              <FiCode className="w-4 h-4" />
-            </button>
-          </div>
+        <div className="bg-gray-50 dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700">
+          {/* Main Toolbar Row */}
+          <div className="flex items-center justify-between p-2">
+            {/* Left: Basic Formatting */}
+            <div className="flex items-center space-x-1">
+              {/* Text Size Dropdown */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowMoreOptions(!showMoreOptions)}
+                  className={`btn-icon flex items-center space-x-1 ${showMoreOptions ? 'bg-primary-100 dark:bg-primary-900 text-primary-600 dark:text-primary-400' : ''}`}
+                  title="Text Size"
+                >
+                  <FiType className="w-4 h-4" />
+                  <FiChevronDown className="w-3 h-3" />
+                </button>
+                
+                {showMoreOptions && (
+                  <div className="absolute bottom-full left-0 mb-2 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 min-w-[120px]">
+                    <button
+                      onClick={() => handleHeadingChange(0)}
+                      className={`w-full px-3 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 ${!editor?.isActive('heading') ? 'bg-primary-100 dark:bg-primary-900 text-primary-600 dark:text-primary-400' : ''}`}
+                    >
+                      <span className="text-sm">Normal</span>
+                    </button>
+                    <button
+                      onClick={() => handleHeadingChange(1)}
+                      className={`w-full px-3 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 ${editor?.isActive('heading', { level: 1 }) ? 'bg-primary-100 dark:bg-primary-900 text-primary-600 dark:text-primary-400' : ''}`}
+                    >
+                      <span className="text-lg font-bold">Heading 1</span>
+                    </button>
+                    <button
+                      onClick={() => handleHeadingChange(2)}
+                      className={`w-full px-3 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 ${editor?.isActive('heading', { level: 2 }) ? 'bg-primary-100 dark:bg-primary-900 text-primary-600 dark:text-primary-400' : ''}`}
+                    >
+                      <span className="text-base font-semibold">Heading 2</span>
+                    </button>
+                  </div>
+                )}
+              </div>
 
-          {/* Right Controls */}
-          <div className="flex items-center space-x-1">
-            {/* Character Count */}
-            <span className={`text-xs px-2 py-1 rounded ${
-              isOverLimit 
-                ? 'text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-900' 
-                : 'text-gray-500 dark:text-gray-400'
-            }`}>
-              {characterCount}/{maxCharacters}
-            </span>
-
-            {/* Emoji Picker */}
-            <div className="relative">
+              {/* Bold */}
               <button
-                onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                className={`btn-icon ${showEmojiPicker ? 'bg-primary-100 dark:bg-primary-900 text-primary-600 dark:text-primary-400' : ''}`}
-                title="Emoji"
+                onClick={() => editor?.chain().focus().toggleBold().run()}
+                className={`btn-icon ${editor?.isActive('bold') ? 'bg-primary-100 dark:bg-primary-900 text-primary-600 dark:text-primary-400' : ''}`}
+                title="Bold (Cmd+B)"
               >
-                <FiSmile className="w-4 h-4" />
+                <FiBold className="w-4 h-4" />
               </button>
               
-              {showEmojiPicker && (
-                <div className="absolute bottom-full right-0 mb-2 z-50">
-                  <EmojiPicker
-                    onEmojiSelect={insertEmoji}
-                    onClose={() => setShowEmojiPicker(false)}
-                  />
-                </div>
-              )}
+              {/* Italic */}
+              <button
+                onClick={() => editor?.chain().focus().toggleItalic().run()}
+                className={`btn-icon ${editor?.isActive('italic') ? 'bg-primary-100 dark:bg-primary-900 text-primary-600 dark:text-primary-400' : ''}`}
+                title="Italic (Cmd+I)"
+              >
+                <FiItalic className="w-4 h-4" />
+              </button>
+
+              {/* Underline */}
+              <button
+                onClick={() => editor?.chain().focus().toggleUnderline().run()}
+                className={`btn-icon ${editor?.isActive('underline') ? 'bg-primary-100 dark:bg-primary-900 text-primary-600 dark:text-primary-400' : ''}`}
+                title="Underline (Cmd+U)"
+              >
+                <FiUnderline className="w-4 h-4" />
+              </button>
+              
+              {/* Code */}
+              <button
+                onClick={() => editor?.chain().focus().toggleCode().run()}
+                className={`btn-icon ${editor?.isActive('code') ? 'bg-primary-100 dark:bg-primary-900 text-primary-600 dark:text-primary-400' : ''}`}
+                title="Code (Cmd+K)"
+              >
+                <FiCode className="w-4 h-4" />
+              </button>
+
+              {/* Separator */}
+              <div className="w-px h-6 bg-gray-300 dark:bg-gray-600 mx-1"></div>
+
+              {/* Link */}
+              <button
+                onClick={() => setShowLinkDialog(!showLinkDialog)}
+                className={`btn-icon ${editor?.isActive('link') ? 'bg-primary-100 dark:bg-primary-900 text-primary-600 dark:text-primary-400' : ''}`}
+                title="Add Link"
+              >
+                <FiLink className="w-4 h-4" />
+              </button>
+
+              {/* Bullet List */}
+              <button
+                onClick={() => editor?.chain().focus().toggleBulletListInline().run()}
+                className={`btn-icon ${editor?.isActive('bulletList') ? 'bg-primary-100 dark:bg-primary-900 text-primary-600 dark:text-primary-400' : ''}`}
+                title="Bullet List"
+              >
+                <FiList className="w-4 h-4" />
+              </button>
             </div>
 
-            {/* File Attachment */}
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="btn-icon"
-              title="Attach File"
-            >
-              <FiPaperclip className="w-4 h-4" />
-            </button>
+            {/* Right: Colors and Actions */}
+            <div className="flex items-center space-x-1">
+              {/* Text Color */}
+              <div className="relative">
+                <button
+                  onClick={() => {
+                    closeAllPopups()
+                    setShowTextColorPicker(!showTextColorPicker)
+                  }}
+                  className={`btn-icon flex items-center ${showTextColorPicker ? 'bg-primary-100 dark:bg-primary-900 text-primary-600 dark:text-primary-400' : ''}`}
+                  title="Text Color"
+                >
+                  <FiType className="w-4 h-4" />
+                  <div 
+                    className="w-2 h-2 rounded-full ml-1 border border-gray-300 dark:border-gray-600"
+                    style={{ backgroundColor: getCurrentTextColor() || '#000000' }}
+                  ></div>
+                </button>
+                
+                {showTextColorPicker && (
+                  <div className="absolute bottom-full right-0 mb-2 z-50">
+                    <ColorPicker
+                      onColorSelect={handleTextColor}
+                      onClose={() => setShowTextColorPicker(false)}
+                      currentColor={getCurrentTextColor()}
+                      type="text"
+                    />
+                  </div>
+                )}
+              </div>
 
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              className="hidden"
-              onChange={(e) => {
-                if (e.target.files) {
-                  handleFileSelect(Array.from(e.target.files))
-                  e.target.value = '' // Reset input
-                }
-              }}
-            />
+              {/* Highlight Color */}
+              <div className="relative">
+                <button
+                  onClick={() => {
+                    closeAllPopups()
+                    setShowHighlightPicker(!showHighlightPicker)
+                  }}
+                  className={`btn-icon flex items-center ${showHighlightPicker ? 'bg-primary-100 dark:bg-primary-900 text-primary-600 dark:text-primary-400' : ''}`}
+                  title="Highlight"
+                >
+                  <FiDroplet className="w-4 h-4" />
+                  <div 
+                    className="w-2 h-2 rounded-full ml-1 border border-gray-300 dark:border-gray-600"
+                    style={{ backgroundColor: getCurrentHighlightColor() || '#fef08a' }}
+                  ></div>
+                </button>
+                
+                {showHighlightPicker && (
+                  <div className="absolute bottom-full right-0 mb-2 z-50">
+                    <ColorPicker
+                      onColorSelect={handleHighlightColor}
+                      onClose={() => setShowHighlightPicker(false)}
+                      currentColor={getCurrentHighlightColor()}
+                      type="highlight"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Separator */}
+              <div className="w-px h-6 bg-gray-300 dark:bg-gray-600 mx-1"></div>
+
+              {/* Character Count */}
+              <span className={`text-xs px-2 py-1 rounded ${
+                isOverLimit 
+                  ? 'text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-900' 
+                  : 'text-gray-500 dark:text-gray-400'
+              }`}>
+                {characterCount}/{maxCharacters}
+              </span>
+
+              {/* Emoji Picker */}
+              <div className="relative">
+                <button
+                  onClick={() => {
+                    closeAllPopups()
+                    setShowEmojiPicker(!showEmojiPicker)
+                  }}
+                  className={`btn-icon ${showEmojiPicker ? 'bg-primary-100 dark:bg-primary-900 text-primary-600 dark:text-primary-400' : ''}`}
+                  title="Emoji"
+                >
+                  <FiSmile className="w-4 h-4" />
+                </button>
+                
+                {showEmojiPicker && (
+                  <div className="absolute bottom-full right-0 mb-2 z-50">
+                    <EmojiPicker
+                      onEmojiSelect={insertEmoji}
+                      onClose={() => setShowEmojiPicker(false)}
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* File Attachment */}
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="btn-icon"
+                title="Attach File"
+              >
+                <FiPaperclip className="w-4 h-4" />
+              </button>
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  if (e.target.files) {
+                    handleFileSelect(Array.from(e.target.files))
+                    e.target.value = '' // Reset input
+                  }
+                }}
+              />
+            </div>
           </div>
+        </div>
+      )}
+
+      {/* Link Dialog */}
+      {showLinkDialog && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <LinkDialog
+            onLinkAdd={handleLinkAdd}
+            onLinkRemove={getCurrentLinkUrl() ? handleLinkRemove : undefined}
+            onClose={() => setShowLinkDialog(false)}
+            currentUrl={getCurrentLinkUrl()}
+          />
         </div>
       )}
     </div>

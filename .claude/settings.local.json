@@ -31,7 +31,12 @@
       "Bash(node test-stores.js)",
       "Bash(grep:*)",
       "Bash(node:*)",
-      "Bash(mv:*)"
+      "Bash(mv:*)",
+      "Bash(docker exec:*)",
+      "Bash(PYTHONPATH=/mnt/h/React_Dev/AIGM/backend python3 -c \"from app.main import app; print(''✅ Backend imports successfully'')\")",
+      "Bash(PYTHONPATH=/mnt/h/React_Dev/AIGM/backend python3 -c \"from main import app; print(''✅ Backend imports successfully'')\")",
+      "Bash(timeout 30s npm run build:*)",
+      "Bash(venv/Scripts/python.exe:*)"
     ],
     "deny": []
   }

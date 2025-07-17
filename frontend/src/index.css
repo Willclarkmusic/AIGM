@@ -1,3 +1,6 @@
+/* TipTap Editor Styles */
+@import './styles/editor.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -164,5 +167,86 @@
   
   .scrollbar-thin::-webkit-scrollbar-thumb:hover {
     background-color: rgb(107 114 128);
+  }
+
+  /* Mobile safe area utilities */
+  .min-h-screen-safe {
+    min-height: 100vh;
+    min-height: calc(100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  }
+
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .pt-safe {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .pl-safe {
+    padding-left: env(safe-area-inset-left);
+  }
+
+  .pr-safe {
+    padding-right: env(safe-area-inset-right);
+  }
+
+  /* Touch targets */
+  .min-h-touch {
+    min-height: 44px;
+  }
+
+  .min-w-touch {
+    min-width: 44px;
+  }
+
+  /* Mobile typography */
+  .text-base-mobile {
+    font-size: 16px;
+    line-height: 1.5;
+  }
+
+  /* Keyboard visibility handling */
+  .keyboard-visible .composer-container {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+  }
+
+  /* Smooth mobile animations */
+  .touch-pan-x {
+    touch-action: pan-x;
+  }
+
+  .touch-pan-y {
+    touch-action: pan-y;
+  }
+
+  .touch-none {
+    touch-action: none;
+  }
+
+  /* iOS specific fixes */
+  @supports (-webkit-touch-callout: none) {
+    /* Fix iOS viewport units */
+    .h-screen-ios {
+      height: -webkit-fill-available;
+    }
+
+    /* Prevent zoom on focus */
+    input:focus {
+      font-size: 16px !important;
+    }
+  }
+
+  /* Performance optimization */
+  .will-change-transform {
+    will-change: transform;
+  }
+
+  .gpu-accelerated {
+    transform: translateZ(0);
   }
 }

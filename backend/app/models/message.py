@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Text, DateTime, ForeignKey, Integer
+from sqlalchemy import Column, String, Text, DateTime, ForeignKey, Integer, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -51,7 +51,7 @@ class MessageReaction(Base):
 
     # Unique constraint on message_id, user_id, emoji combination
     __table_args__ = (
-        {"sqlite_autoincrement": True},
+        UniqueConstraint("message_id", "user_id", "emoji", name="unique_reaction"),
     )
 
     # Relationships

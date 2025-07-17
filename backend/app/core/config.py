@@ -6,8 +6,11 @@ class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"
     PROJECT_NAME: str = "AIGM"
     
-    # Database
-    DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/aigm")
+    # Database - automatically use SQLite if PostgreSQL not available
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./aigm_test.db")
+    
+    # Development mode flag
+    USE_SQLITE_FOR_DEV: bool = os.getenv("USE_SQLITE_FOR_DEV", "true").lower() == "true"
     
     # Redis
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379")

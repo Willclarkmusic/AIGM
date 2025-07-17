@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
-from pydantic import BaseModel, EmailStr, validator
+from pydantic import BaseModel, EmailStr, field_validator
 from typing import List, Optional
 from app.db.database import get_db
-from app.auth.dependencies import get_current_user
+from app.core.mock_auth import get_current_user
 from app.models.user import User
 from app.models.friendship import Friendship, FriendshipStatus
 from app.services.user_service import UserService
@@ -19,7 +19,8 @@ class FriendRequestRequest(BaseModel):
     """Request body for sending a friend request"""
     user_id: str
     
-    @validator('user_id')
+    @field_validator('user_id')
+    @classmethod
     def validate_user_id(cls, v):
         if not v or not v.strip():
             raise ValueError('User ID is required')
@@ -29,7 +30,8 @@ class FriendRequestByIdentifierRequest(BaseModel):
     """Request body for sending a friend request by username or email"""
     identifier: str  # username or email
     
-    @validator('identifier')
+    @field_validator('identifier')
+    @classmethod
     def validate_identifier(cls, v):
         if not v or not v.strip():
             raise ValueError('Username or email is required')

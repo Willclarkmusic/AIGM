@@ -1,5 +1,5 @@
 import { useRef, useEffect } from 'react'
-import { Picker } from '@emoji-mart/react'
+import Picker from '@emoji-mart/react'
 import data from '@emoji-mart/data'
 import { useTheme } from '../../stores/uiStore'
 import { FiX } from 'react-icons/fi'
@@ -87,62 +87,6 @@ const EmojiPicker = ({ onEmojiSelect, onClose, className = '' }: EmojiPickerProp
             'places', 
             'objects', 
             'symbols'
-          ]}
-          custom={[
-            {
-              id: 'custom',
-              name: 'Custom',
-              emojis: [
-                {
-                  id: 'wave',
-                  name: 'Wave',
-                  keywords: ['hello', 'hi', 'wave'],
-                  skins: [{ src: '👋' }]
-                },
-                {
-                  id: 'thumbs_up',
-                  name: 'Thumbs Up',
-                  keywords: ['like', 'good', 'yes'],
-                  skins: [{ src: '👍' }]
-                },
-                {
-                  id: 'heart',
-                  name: 'Heart',
-                  keywords: ['love', 'like'],
-                  skins: [{ src: '❤️' }]
-                },
-                {
-                  id: 'fire',
-                  name: 'Fire',
-                  keywords: ['hot', 'fire', 'cool'],
-                  skins: [{ src: '🔥' }]
-                },
-                {
-                  id: 'rocket',
-                  name: 'Rocket',
-                  keywords: ['fast', 'launch', 'space'],
-                  skins: [{ src: '🚀' }]
-                },
-                {
-                  id: 'tada',
-                  name: 'Party',
-                  keywords: ['celebrate', 'party'],
-                  skins: [{ src: '🎉' }]
-                },
-                {
-                  id: 'thinking',
-                  name: 'Thinking',
-                  keywords: ['think', 'hmm'],
-                  skins: [{ src: '🤔' }]
-                },
-                {
-                  id: 'laughing',
-                  name: 'Laughing',
-                  keywords: ['lol', 'funny', 'laugh'],
-                  skins: [{ src: '😂' }]
-                }
-              ]
-            }
           ]}
           style={{
             width: '320px',

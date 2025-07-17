@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, validator
+from pydantic import BaseModel, EmailStr, field_validator
 from typing import Optional, Dict, Any
 from datetime import datetime
 
@@ -6,7 +6,8 @@ class LoginRequest(BaseModel):
     """Request body for Auth0 login validation"""
     access_token: str
     
-    @validator('access_token')
+    @field_validator('access_token')
+    @classmethod
     def validate_access_token(cls, v):
         if not v or not v.strip():
             raise ValueError('Access token is required')
@@ -26,7 +27,8 @@ class EmailVerificationRequest(BaseModel):
     """Request body for email verification"""
     token: str
     
-    @validator('token')
+    @field_validator('token')
+    @classmethod
     def validate_token(cls, v):
         if not v or not v.strip():
             raise ValueError('Verification token is required')

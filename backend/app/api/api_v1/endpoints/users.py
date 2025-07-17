@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
-from pydantic import BaseModel, EmailStr, validator
+from pydantic import BaseModel, EmailStr, field_validator
 from typing import Optional, List
 from app.db.database import get_db
-from app.auth.dependencies import get_current_user
+from app.core.mock_auth import get_current_user
 from app.models.user import User
 from app.services.user_service import UserService
 
@@ -15,7 +15,8 @@ class UserUpdateRequest(BaseModel):
     picture_url: Optional[str] = None
     external_link: Optional[str] = None
     
-    @validator('username')
+    @field_validator('username')
+    @classmethod
     def validate_username(cls, v):
         if v is not None:
             if len(v) < 3 or len(v) > 50:
@@ -24,14 +25,16 @@ class UserUpdateRequest(BaseModel):
                 raise ValueError('Username can only contain letters, numbers, hyphens, and underscores')
         return v
     
-    @validator('picture_url')
+    @field_validator('picture_url')
+    @classmethod
     def validate_picture_url(cls, v):
         if v is not None and v.strip():
             if not v.startswith(('http://', 'https://')):
                 raise ValueError('Picture URL must be a valid URL')
         return v
     
-    @validator('external_link')
+    @field_validator('external_link')
+    @classmethod
     def validate_external_link(cls, v):
         if v is not None and v.strip():
             if not v.startswith(('http://', 'https://')):

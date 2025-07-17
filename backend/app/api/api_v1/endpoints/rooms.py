@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, field_validator
 from typing import List, Optional
 from app.db.database import get_db
-from app.auth.dependencies import get_current_user
+from app.core.mock_auth import get_current_user
 from app.models.user import User
 from app.models.server import Server, UserServer
 from app.models.room import Room, UserRoom
@@ -22,7 +22,8 @@ class CreateRoomRequest(BaseModel):
     name: str
     is_private: bool = False
     
-    @validator('name')
+    @field_validator('name')
+    @classmethod
     def validate_name(cls, v):
         if not v or not v.strip():
             raise ValueError('Room name is required')
@@ -30,7 +31,8 @@ class CreateRoomRequest(BaseModel):
             raise ValueError('Room name must be 100 characters or less')
         return v.strip()
     
-    @validator('server_id')
+    @field_validator('server_id')
+    @classmethod
     def validate_server_id(cls, v):
         if not v or not v.strip():
             raise ValueError('Server ID is required')
@@ -41,7 +43,8 @@ class UpdateRoomRequest(BaseModel):
     name: Optional[str] = None
     is_private: Optional[bool] = None
     
-    @validator('name')
+    @field_validator('name')
+    @classmethod
     def validate_name(cls, v):
         if v is not None:
             if not v or not v.strip():
